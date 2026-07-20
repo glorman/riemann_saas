@@ -102,4 +102,11 @@ async def read_root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="127.0.0.1", port=8000, reload=True)
+    import os
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
+
+for name, filename in AVAILABLE_LUTS.items():
+    path = os.path.join(os.path.dirname(__file__), filename)
+    if not os.path.exists(path):
+        print(f"⚠️ WARNING: LUT file '{filename}' not found. The '{name}' LUT will fail.")

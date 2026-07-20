@@ -47,11 +47,16 @@ def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> B
     if lut_name not in AVAILABLE_LUTS:
         raise HTTPException(status_code=400, detail="Quantum invariant not found.")
     
-    # Исправленный путь: ищем прямо в корне без подпапки luts
-    lut_path = os.path.join(LUT_DIRECTORY, AVAILABLE_LUTS[lut_name]) if LUT_DIRECTORY else AVAILABLE_LUTS[lut_name]
+    # ЖЕСТКИЙ АБСОЛЮТНЫЙ ПУТЬ ДЛЯ ОБЛАКА ТАРКОВСКОГО
+    # Находит точную папку на сервере Render, где лежит этот main.py
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    lut_path = os.path.join(current_dir, AVAILABLE_LUTS[lut_name])
+    
+    print(f"[RENDER LOG] Looking for LUT execution at absolute path: {lut_path}")
     
     if not os.path.exists(lut_path):
-        raise HTTPException(status_code=500, detail=f"Critical Server Error: LUT file [{lut_path}] lost.")
+        # Если сервер опять потеряет куб, он напечатает в логи Render точный путь, где он его искал
+        raise HTTPException(status_code=500, detail=f"Engine fault: LUT file not found at {lut_path}")
 
     try:
         img = Image.open(BytesIO(image_bytes))
@@ -82,6 +87,7 @@ def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> B
         traceback.print_exc()
         print("="*50 + "\n")
         raise HTTPException(status_code=500, detail=f"Engine fault: {str(e)}")
+
 
 
 

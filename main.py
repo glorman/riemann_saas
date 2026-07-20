@@ -97,9 +97,8 @@ async def read_root():
     if not os.path.exists(html_path):
         return "<h1>Error: index.html not found!</h1>"
     with open(html_path, "r", encoding="utf-8") as f:
-        html_content = f.read()
-        # Автоматическая замена путей для работы фронтенда прямо внутри Render
-        return html_content.replace("https://onrender.com", "/api/process")
+        return f.read()
+
 
 if __name__ == "__main__":
     import uvicorn

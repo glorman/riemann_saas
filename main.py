@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse, HTMLResponse
 from PIL import Image, ImageOps
 from io import BytesIO, StringIO
 from pillow_lut import load_cube_file
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Riemann Quantum Color Engine - Locked Core")
 
@@ -16,6 +17,13 @@ AVAILABLE_LUTS = {
     "peugeot_night": "peugeot_night.cube",
     "zeta": "zeta.cube"
 }
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], # Разрешает запросы абсолютно с любых сайтов (включая Hugging Face)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Наш секретный мастер-ключ для разблокировки полного разрешения
 SECRET_PREMIUM_KEY = "RIEMANN_DEATH_TO_ZAVOD_2026"

@@ -130,7 +130,7 @@ processBtn.onclick = async () => {
 
     try {
         // Замени глобальным веб-адресом твоего будущего бэкенда на Render
-const response = await fetch('https://onrender.com', { method: 'POST', body: formData });
+const response = await fetch('https://riemann-saas.onrender.com', { method: 'POST', body: formData });
 
         if (!response.ok) throw new Error('Server core engine fault.');
         

@@ -116,43 +116,45 @@ function handleFile(file) {
 }
 
         processBtn.onclick = async () => {
-            if (!selectedFile) {
-                alert('Drop an image first.');
-                return;
-            }
-            processBtn.innerText = 'COMPUTING QUANTUM PROBABILITIES...';
-            downloadBtn.style.display = 'none';
-            
-            const formData = new FormData();
-            formData.append('file', selectedFile);
-            formData.append('lut_type', lutType.value);
-            formData.append('license_key', licenseKey.value);
+    if (!selectedFile) {
+        alert('Drop an image first.');
+        return;
+    }
+    processBtn.innerText = 'COMPUTING QUANTUM PROBABILITIES...';
+    downloadBtn.style.display = 'none';
+    
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+    formData.append('lut_type', lutType.value);
+    formData.append('license_key', licenseKey.value);
 
-            try {
-                // ЖЕСТКИЙ ПУТЬ К ТВОЕМУ БЭКЕНДУ НА RENDER БЕЗ КОСТЫЛЕЙ
-                const response = await fetch('https://onrender.com', { 
-                    method: 'POST', 
-                    body: formData 
-                });
-                
-                if (!response.ok) throw new Error('Server core engine fault.');
-                
-                const blob = await response.blob();
-                
-                if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
-                
-                resultBlobUrl = URL.createObjectURL(blob);
-                resultImg.src = resultBlobUrl;
-                resultImg.style.display = 'block';
-                
-                downloadBtn.style.display = 'inline-block';
-                processBtn.innerText = 'RUN QUANTUM EXPONENT';
-            } catch (err) {
-                alert(err.message);
-                processBtn.innerText = 'RUN QUANTUM EXPONENT';
-            }
-        };
-
+    try {
+        // ОТНОСИТЕЛЬНЫЙ ПУТЬ – работает, если index.html и API на одном домене
+        const response = await fetch('/api/process', { 
+            method: 'POST', 
+            body: formData 
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Server fault: ${response.status} ${errorText}`);
+        }
+        
+        const blob = await response.blob();
+        
+        if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
+        
+        resultBlobUrl = URL.createObjectURL(blob);
+        resultImg.src = resultBlobUrl;
+        resultImg.style.display = 'block';
+        
+        downloadBtn.style.display = 'inline-block';
+        processBtn.innerText = 'RUN QUANTUM EXPONENT';
+    } catch (err) {
+        alert('Ошибка: ' + err.message + ' Проверь, что сервер запущен, и путь /api/process доступен.');
+        processBtn.innerText = 'RUN QUANTUM EXPONENT';
+    }
+};
 
 downloadBtn.onclick = () => {
     if (!resultBlobUrl) return;

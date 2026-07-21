@@ -1,5 +1,6 @@
 import os
 import io
+import traceback
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -30,7 +31,7 @@ AVAILABLE_LUTS = {
 
 SECRET_PREMIUM_KEY = "RIEMANN_DEATH_TO_ZAVOD_2026"
 
-# --- ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА (ВЫНЕСЕНА НАВЕРХ, 0 ОТСТУПОВ) ---
+# --- ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА ---
 def load_cleaned_lut(lut_path: str):
     if not os.path.exists(lut_path):
         raise FileNotFoundError(f"LUT matrix missing at: {lut_path}")
@@ -53,20 +54,38 @@ def load_cleaned_lut(lut_path: str):
     cleaned_buffer.seek(0)
     return load_cube_file(cleaned_buffer)
 
-# --- КОРРЕКТНЫЙ КОНТУР ОБРАБОТКИ С СОБЛЮДЕНИЕМ 4 ПРОБЕЛОВ ---
+# --- КОРРЕКТНЫЙ КОНТУР ОБРАБОТКИ ---
+def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> io.BytesIO:
+    if lut_name not in AVAILABLE_LUTS:
+        raise ValueError("Unknown quantum matrix target.")
+        
+    lut_path = os.path.join(CURRENT_DIR, AVAILABLE_LUTS[lut_name])
+    
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
+        
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+            
+        is_premium = (license_key == SECRET_PREMIUM_KEY)
+        max_side = 2000 if is_premium else 800
+        
+        w, h = img.size
+        if max(w, h) > max_side:
+            if w > h:
+                new_w, new_h = max_side, int(h * (max_side / w))
+            else:
+                new_w, new_h = int(w * (max_side / h)), max_side
+            img = img.resize((new_w, new_h), resample=Image.Resampling.BILINEAR)
+            
         try:
             he_lut = load_cleaned_lut(lut_path)
+            processed_img = img.filter(he_lut)
         except Exception as e:
-            # === ВЫВОДИМ ПОЛНЫЙ ТРЕЙС ОШИБКИ В КОНСОЛЬ RENDER ===
-            import traceback
             print("!!! КРИТИЧЕСКИЙ СБОЙ МАТРИЦЫ LUT !!!")
             traceback.print_exc()
-            # ===================================================
             raise RuntimeError(f"Engine fault during matrix calibration: {str(e)}")
-
             
-        processed_img = img.filter(he_lut)
-        
         output_buffer = io.BytesIO()
         processed_img.save(
             output_buffer, 

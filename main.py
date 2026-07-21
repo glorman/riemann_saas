@@ -1,5 +1,6 @@
 import os
 import io
+import tempfile
 import traceback
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -31,40 +32,39 @@ AVAILABLE_LUTS = {
 
 SECRET_PREMIUM_KEY = "RIEMANN_DEATH_TO_ZAVOD_2026"
 
-# --- ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА ---
-# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА (ОТДАЕТ КОРРЕКТНЫЙ БАЙТ-ПОТОК) ---
+# --- БЕЗОПАСНАЯ ФУНКЦИЯ ЗАГРУЗКИ ЧЕРЕЗ ВРЕМЕННЫЙ ФАЙЛ НА ДИСКЕ ---
 def load_cleaned_lut(lut_path: str):
     if not os.path.exists(lut_path):
         raise FileNotFoundError(f"LUT matrix missing at: {lut_path}")
         
-    # pillow-lut требует байтовый поток (BytesIO), а не текстовый StringIO
-    cleaned_bytes = io.BytesIO()
-    
+    # Считываем и очищаем строки оригинального файла
+    cleaned_lines = []
     with open(lut_path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
             stripped = line.strip()
             if not stripped:
                 continue
             
-            # Пропускаем строки комментариев, если они ломают Си-парсер
-            if stripped.startswith("#"):
+            # Пропускаем комментарии, если они не несут метаданных размера
+            if stripped.startswith("#") and "SIZE" not in stripped:
                 continue
                 
-            parts = stripped.split()
-            # Валидация строк матрицы (должно быть строго 3 RGB коэффициента)
-            if parts and (parts[0].replace('.','',1).replace('-','',1).isdigit()):
-                if len(parts) != 3:
-                    continue  # Дропаем битые строки
+            cleaned_lines.append(stripped)
             
-            # Записываем строчку обратно как закодированные байты
-            cleaned_bytes.write((stripped + "\n").encode("utf-8"))
-            
-    cleaned_bytes.seek(0)
-    
-    # Обертка, так как некоторые версии pillow-lut требуют текстовый интерфейс над байтами
-    text_wrapper = io.TextIOWrapper(cleaned_bytes, encoding="utf-8")
-    return load_cube_file(text_wrapper)
+    # Создаем физический временный файл на диске, который поймет Си-код
+    with tempfile.NamedTemporaryFile(mode="w+", suffix=".cube", delete=False, encoding="utf-8") as temp_file:
+        temp_file.write("\n".join(cleaned_lines) + "\n")
+        temp_file_path = temp_file.name
 
+    try:
+        # Передаем Си-контуру честный путь к файлу на диске
+        lut_matrix = load_cube_file(temp_file_path)
+    finally:
+        # Гарантированно удаляем временный файл с диска, чтобы сберечь память
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
+            
+    return lut_matrix
 
 # --- КОРРЕКТНЫЙ КОНТУР ОБРАБОТКИ ---
 def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> io.BytesIO:

@@ -77,54 +77,59 @@
 
     <script>
 async function uploadImage() {
-    const fileInput = document.getElementById('fileInput'); // Проверьте, что ID вашего тега <input type="file"> именно такой
-    const lutSelect = document.getElementById('lutSelect'); // ID вашего тега <select> для выбора LUT
-    const tokenInput = document.getElementById('tokenInput'); // ID тега <input> для лицензии
-    const resultImage = document.getElementById('resultImage'); // ID тега <img> для вывода результата
+    // Автономный поиск: ищем элементы по тегам, если ID не совпадают
+    const fileInput = document.querySelector('input[type="file"]');
+    const lutSelect = document.querySelector('select');
+    const tokenInput = document.querySelector('input[type="text"]') || { value: '' };
+    
+    // Ищем картинку для вывода результата (первую на странице или с классом/id)
+    let resultImage = document.getElementById('resultImage') || document.querySelector('img:not([id="source"])');
 
-    if (!fileInput.files || fileInput.files.length === 0) {
-        alert("ОШИБКА: Матрица пуста. Загрузите исходный кадр.");
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        alert("КРИТИЧЕСКИЙ СБОЙ: Исходный кадр не обнаружен в системе. Выберите файл.");
         return;
     }
 
-    // Собираем данные строго под сигнатуру FastAPI
     const formData = new FormData();
-    formData.append('file', fileInput.files[0]); // Ключ должен быть строго 'file'
+    // Связываем байты строго с ключом 'file' для FastAPI бэкенда
+    formData.append('file', fileInput.files[0]); 
     formData.append('lut', lutSelect ? lutSelect.value : 'riemann');
-    formData.append('token', tokenInput ? tokenInput.value.trim() : '');
+    formData.append('token', tokenInput.value ? tokenInput.value.trim() : '');
 
     try {
-        console.log("Запуск стабилизатора хаоса. Отправка пакета на ://onrender.com...");
+        console.log("Запуск стабилизатора хаоса. Канал связи открыт...");
         
-        // ВАЖНО: Строго HTTPS домен бэкенда
-        const response = await fetch('https://onrender.com/api/process', {
+        // Строго защищенный HTTPS эндпоинт без ручных Content-Type
+        const response = await fetch('https://onrender.com', {
             method: 'POST',
             body: formData
-            // Никаких headers: { 'Content-Type': ... }! Браузер все сделает сам.
         });
 
         if (!response.ok) {
-            const errBody = await response.text();
-            throw new Error(`Сбой калибровки ядра: ${response.status} -> ${errBody}`);
+            const errText = await response.text();
+            throw new Error(`Код: ${response.status}. Текст: ${errText}`);
         }
 
-        // Принимаем бинарный поток как BLOB (JPEG изображение)
         const imageBlob = await response.blob();
         const objectURL = URL.createObjectURL(imageBlob);
         
         if (resultImage) {
             resultImage.src = objectURL;
-            console.log("Топологическая структура кадра восстановлена.");
+            console.log("Матрица успешно наложена. Порядок восстановлен.");
         } else {
-            // Если тега вывода нет, просто открываем в новом окне/скачиваем
-            window.open(objectURL, '_blank');
+            // Если тег img на странице не найден, принудительно скачиваем результат
+            const a = document.createElement('a');
+            a.href = objectURL;
+            a.download = "stabilized_riemann.jpg";
+            a.click();
         }
 
     } catch (error) {
-        console.error("Критический сбой дескриптора fetch:", error);
-        alert(`Failed to fetch: ${error.message}\n\nРешение:\nОткройте консоль (F12) -> вкладка Network. Посмотрите, какой протокол (http или https) там указан.`);
+        console.error("Сбой fetch потока:", error);
+        alert(`Ошибка калибровки: ${error.message}\nПосмотрите F12 -> Console.`);
     }
 }
+
 
 
     </script>

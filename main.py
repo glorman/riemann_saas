@@ -31,46 +31,27 @@ SECRET_PREMIUM_KEY = "RIEMANN_DEATH_TO_ZAVOD_2026"
 MAX_PREVIEW_SIZE = 800     
 MAX_PREMIUM_SIZE = 2000    # Лимит 2000px, чтобы уложиться в 512MB RAM бесплатного Render
 
-def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> BytesIO:
-    if lut_name not in AVAILABLE_LUTS:
-        raise HTTPException(status_code=400, detail="Quantum invariant not found.")
-    
-    # Находим точный абсолютный путь до файла куба в корне проекта
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    lut_path = os.path.join(current_dir, AVAILABLE_LUTS[lut_name])
-    
-    if not os.path.exists(lut_path):
-        raise HTTPException(status_code=500, detail=f"LUT file lost at {lut_path}")
-
-    try:
-        # Открываем изображение экономно
-        with Image.open(BytesIO(image_bytes)) as img:
-            img = ImageOps.exif_transpose(img)
+            # === ВОЗВРАЩАЕМ ЗАЩИТНЫЙ КОНТУР ФИЛЬТРАЦИИ ПОТОКА ===
+            cleaned_lines = []
+            with open(lut_path, "r", encoding="utf-8", errors="ignore") as f:
+                for line in f:
+                    stripped = line.strip()
+                    if not stripped: 
+                        continue  # Фильтруем пустые строки, вызывающие IndexError
+                    
+                    parts = stripped.split()
+                    # Если это строка с данными (начинается с цифры/минуса), проверяем валидность
+                    if parts and (parts[0][0].isdigit() or parts[0].startswith('-') or parts[0].startswith('.')):
+                        if len(parts) != 3:
+                            continue  # Дропаем битые строки матрицы, спасая от out of range
+                    
+                    cleaned_lines.append(stripped)
             
-            if img.mode != "RGB":
-                img = img.convert("RGB")
-                
-            # Проверяем лицензию
-            if license_key == SECRET_PREMIUM_KEY:
-                if max(img.size) > MAX_PREMIUM_SIZE:
-                    img.thumbnail((MAX_PREMIUM_SIZE, MAX_PREMIUM_SIZE), Image.Resampling.BILINEAR)
-            else:
-                img.thumbnail((MAX_PREVIEW_SIZE, MAX_PREVIEW_SIZE), Image.Resampling.BILINEAR)
-            
-            # Загружаем куб напрямую с диска БЕЗ костылей в памяти
-            he_lut = load_cube_file(lut_path)
+            # Передаем очищенный массив строк напрямую в парсер
+            he_lut = load_cube_file(cleaned_lines)
             processed_img = img.filter(he_lut)
-            
-            output_buffer = BytesIO()
-            processed_img.save(output_buffer, format="JPEG", quality=85, optimize=True)
-            output_buffer.seek(0)
-            return output_buffer
+            # ====================================================
 
-    except Exception as e:
-        print("\n" + "="*50)
-        traceback.print_exc()
-        print("="*50 + "\n")
-        raise HTTPException(status_code=500, detail=f"Engine fault: {str(e)}")
 
 
 @app.post("/api/process")

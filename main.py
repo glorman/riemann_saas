@@ -1,15 +1,14 @@
 import os
-import traceback
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
-from fastapi.responses import StreamingResponse, HTMLResponse
+import io
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from PIL import Image, ImageOps
-from io import BytesIO
 from pillow_lut import load_cube_file
 
-app = FastAPI(title="Riemann Engine - Production Core")
+# --- ИНИЦИАЛИЗАЦИЯ И CORS ---
+app = FastAPI(title="Immortal Jellyfish Core Engine")
 
-# CORS КОНТУР ДЛЯ СВЯЗКИ С ХАГГИНГФЕЙСОМ
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -18,7 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-LUT_DIRECTORY = ""
+# --- КОНФИГУРАЦИЯ ПУТЕЙ ---
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 AVAILABLE_LUTS = {
     "riemann": "riemann.cube",
     "yang_mills": "yang_mills.cube",
@@ -28,66 +29,92 @@ AVAILABLE_LUTS = {
 }
 
 SECRET_PREMIUM_KEY = "RIEMANN_DEATH_TO_ZAVOD_2026"
-MAX_PREVIEW_SIZE = 800     
-MAX_PREMIUM_SIZE = 2000    # Лимит 2000px, чтобы уложиться в 512MB RAM бесплатного Render
 
-            # === ВОЗВРАЩАЕМ ЗАЩИТНЫЙ КОНТУР ФИЛЬТРАЦИИ ПОТОКА ===
-            cleaned_lines = []
-            with open(lut_path, "r", encoding="utf-8", errors="ignore") as f:
-                for line in f:
-                    stripped = line.strip()
-                    if not stripped: 
-                        continue  # Фильтруем пустые строки, вызывающие IndexError
-                    
-                    parts = stripped.split()
-                    # Если это строка с данными (начинается с цифры/минуса), проверяем валидность
-                    if parts and (parts[0][0].isdigit() or parts[0].startswith('-') or parts[0].startswith('.')):
-                        if len(parts) != 3:
-                            continue  # Дропаем битые строки матрицы, спасая от out of range
-                    
-                    cleaned_lines.append(stripped)
+# --- ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА (ВЫНЕСЕНА НАВЕРХ, 0 ОТСТУПОВ) ---
+def load_cleaned_lut(lut_path: str):
+    if not os.path.exists(lut_path):
+        raise FileNotFoundError(f"LUT matrix missing at: {lut_path}")
+        
+    cleaned_buffer = io.StringIO()
+    
+    with open(lut_path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped:
+                continue
             
-            # Передаем очищенный массив строк напрямую в парсер
-            he_lut = load_cube_file(cleaned_lines)
-            processed_img = img.filter(he_lut)
-            # ====================================================
+            parts = stripped.split()
+            if parts and (parts[0].isdigit() or parts[0].startswith('-') or parts[0].startswith('.')):
+                if len(parts) != 3:
+                    continue
+            
+            cleaned_buffer.write(stripped + "\n")
+            
+    cleaned_buffer.seek(0)
+    return load_cube_file(cleaned_buffer)
 
+# --- КОРРЕКТНЫЙ КОНТУР ОБРАБОТКИ С СОБЛЮДЕНИЕМ 4 ПРОБЕЛОВ ---
+def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> io.BytesIO:
+    if lut_name not in AVAILABLE_LUTS:
+        raise ValueError("Unknown quantum matrix target.")
+        
+    lut_path = os.path.join(CURRENT_DIR, AVAILABLE_LUTS[lut_name])
+    
+    with Image.open(io.BytesIO(image_bytes)) as img:
+        img = ImageOps.exif_transpose(img)
+        
+        if img.mode != "RGB":
+            img = img.convert("RGB")
+            
+        is_premium = (license_key == SECRET_PREMIUM_KEY)
+        max_side = 2000 if is_premium else 800
+        
+        w, h = img.size
+        if max(w, h) > max_side:
+            if w > h:
+                new_w, new_h = max_side, int(h * (max_side / w))
+            else:
+                new_w, new_h = int(w * (max_side / h)), max_side
+            img = img.resize((new_w, new_h), resample=Image.Resampling.BILINEAR)
+            
+        try:
+            he_lut = load_cleaned_lut(lut_path)
+        except Exception as e:
+            raise RuntimeError(f"Engine fault during matrix calibration: {str(e)}")
+            
+        processed_img = img.filter(he_lut)
+        
+        output_buffer = io.BytesIO()
+        processed_img.save(
+            output_buffer, 
+            format="JPEG", 
+            quality=85, 
+            optimize=True
+        )
+        output_buffer.seek(0)
+        return output_buffer
 
+# --- ЭНДПОИНТЫ ---
+@app.get("/")
+def read_root():
+    return {
+        "status": "ONLINE", 
+        "engine": "Immortal Jellyfish v1.0.0-MVP", 
+        "math_stabilizer": "Riemann/Yang-Mills Operational"
+    }
 
 @app.post("/api/process")
 async def process_image(
     file: UploadFile = File(...),
-    lut_type: str = Form("riemann"),
-    license_key: str = Form("")
+    lut: str = Form(...),
+    token: str = Form(default="")
 ):
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Images only.")
-    
-    file_bytes = await file.read()
-    
-    if len(file_bytes) > 10 * 1024 * 1024:
-         raise HTTPException(status_code=413, detail="File limit 10MB.")
-         
-    processed_buffer = process_image_core(file_bytes, lut_type, license_key.strip())
-    return StreamingResponse(processed_buffer, media_type="image/jpeg")
-
-
-@app.get("/", response_class=HTMLResponse)
-async def read_root():
-    html_path = "index.html"
-    if not os.path.exists(html_path):
-        return "<h1>Error: index.html not found!</h1>"
-    with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
-
-
-if __name__ == "__main__":
-    import uvicorn
-    import os
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port)
-
-for name, filename in AVAILABLE_LUTS.items():
-    path = os.path.join(os.path.dirname(__file__), filename)
-    if not os.path.exists(path):
-        print(f"⚠️ WARNING: LUT file '{filename}' not found. The '{name}' LUT will fail.")
+    try:
+        image_bytes = await file.read()
+        result_stream = process_image_core(image_bytes, lut, token.strip())
+        return StreamingResponse(result_stream, media_type="image/jpeg")
+        
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=f"Validation error: {str(ve)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Engine fault: {str(e)}")

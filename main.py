@@ -32,11 +32,13 @@ AVAILABLE_LUTS = {
 SECRET_PREMIUM_KEY = "RIEMANN_DEATH_TO_ZAVOD_2026"
 
 # --- ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА ---
+# --- ИСПРАВЛЕННАЯ ФУНКЦИЯ ОЧИСТКИ CUBE-ФАЙЛА (ОТДАЕТ КОРРЕКТНЫЙ БАЙТ-ПОТОК) ---
 def load_cleaned_lut(lut_path: str):
     if not os.path.exists(lut_path):
         raise FileNotFoundError(f"LUT matrix missing at: {lut_path}")
         
-    cleaned_buffer = io.StringIO()
+    # pillow-lut требует байтовый поток (BytesIO), а не текстовый StringIO
+    cleaned_bytes = io.BytesIO()
     
     with open(lut_path, "r", encoding="utf-8", errors="ignore") as f:
         for line in f:
@@ -44,15 +46,25 @@ def load_cleaned_lut(lut_path: str):
             if not stripped:
                 continue
             
+            # Пропускаем строки комментариев, если они ломают Си-парсер
+            if stripped.startswith("#"):
+                continue
+                
             parts = stripped.split()
-            if parts and (parts[0].isdigit() or parts[0].startswith('-') or parts[0].startswith('.')):
+            # Валидация строк матрицы (должно быть строго 3 RGB коэффициента)
+            if parts and (parts[0].replace('.','',1).replace('-','',1).isdigit()):
                 if len(parts) != 3:
-                    continue
+                    continue  # Дропаем битые строки
             
-            cleaned_buffer.write(stripped + "\n")
+            # Записываем строчку обратно как закодированные байты
+            cleaned_bytes.write((stripped + "\n").encode("utf-8"))
             
-    cleaned_buffer.seek(0)
-    return load_cube_file(cleaned_buffer)
+    cleaned_bytes.seek(0)
+    
+    # Обертка, так как некоторые версии pillow-lut требуют текстовый интерфейс над байтами
+    text_wrapper = io.TextIOWrapper(cleaned_bytes, encoding="utf-8")
+    return load_cube_file(text_wrapper)
+
 
 # --- КОРРЕКТНЫЙ КОНТУР ОБРАБОТКИ ---
 def process_image_core(image_bytes: bytes, lut_name: str, license_key: str) -> io.BytesIO:

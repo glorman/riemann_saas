@@ -8,20 +8,41 @@ from fastapi.responses import StreamingResponse
 from PIL import Image, ImageOps
 from pillow_lut import load_cube_file
 
-# --- ИНИЦИАЛИЗАЦИЯ И CORS ---
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request, Response
+
+# --- ИНИЦИАЛИЗАЦИЯ АПП —--
 app = FastAPI(title="Immortal Jellyfish Core Engine")
 
+# 1. Стандартный CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
-@app.options("/api/process")
-async def options_process():
-    return {"status": "CORS_OK"}
+# 2. Кастомный жесткий Middleware для принудительной прописей CORS во ВСЕ ответы (даже при ошибках)
+class SuperCORS(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if request.method == "OPTIONS":
+            response = Response()
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, DELETE, PUT"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
+            
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "POST, GET, OPTIONS, DELETE, PUT"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+
+app.add_middleware(SuperCORS)
+
 
 # --- КОНФИГУРАЦИЯ ПУТЕЙ ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

@@ -76,99 +76,56 @@
     </div>
 
     <script>
-        const dropZone = document.getElementById('drop-zone');
-const fileInput = document.getElementById('file-input');
-const processBtn = document.getElementById('process-btn');
-const downloadBtn = document.getElementById('download-btn');
-const lutType = document.getElementById('lut-type');
-const licenseKey = document.getElementById('license-key');
-const resultImg = document.getElementById('result');
-const wtfToggle = document.getElementById('wtf-toggle');
-const wtfText = document.getElementById('wtf-text');
+async function uploadImage() {
+    const fileInput = document.getElementById('fileInput'); // Проверьте, что ID вашего тега <input type="file"> именно такой
+    const lutSelect = document.getElementById('lutSelect'); // ID вашего тега <select> для выбора LUT
+    const tokenInput = document.getElementById('tokenInput'); // ID тега <input> для лицензии
+    const resultImage = document.getElementById('resultImage'); // ID тега <img> для вывода результата
 
-let selectedFile = null;
-let resultBlobUrl = null;
-
-wtfToggle.onclick = () => {
-    if (wtfText.style.display === 'block') {
-        wtfText.style.display = 'none';
-        wtfToggle.innerText = 'WTF IS THIS?';
-    } else {
-        wtfText.style.display = 'block';
-        wtfToggle.innerText = 'CLOSE WTF';
+    if (!fileInput.files || fileInput.files.length === 0) {
+        alert("ОШИБКА: Матрица пуста. Загрузите исходный кадр.");
+        return;
     }
-};
 
-dropZone.onclick = () => fileInput.click();
-fileInput.onchange = (e) => handleFile(e.target.files[0]);
+    // Собираем данные строго под сигнатуру FastAPI
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]); // Ключ должен быть строго 'file'
+    formData.append('lut', lutSelect ? lutSelect.value : 'riemann');
+    formData.append('token', tokenInput ? tokenInput.value.trim() : '');
 
-dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.borderColor = '#888'; };
-dropZone.ondragleave = () => { dropZone.style.borderColor = '#444'; };
-dropZone.ondrop = (e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); };
+    try {
+        console.log("Запуск стабилизатора хаоса. Отправка пакета на ://onrender.com...");
+        
+        // ВАЖНО: Строго HTTPS домен бэкенда
+        const response = await fetch('https://://onrender.com/api/process', {
+            method: 'POST',
+            body: formData
+            // Никаких headers: { 'Content-Type': ... }! Браузер все сделает сам.
+        });
 
-function handleFile(file) {
-    if (file && file.type.startsWith('image/')) {
-        selectedFile = file;
-        dropZone.innerText = `FILE: ${file.name.toUpperCase()}`;
-        resultImg.style.display = 'none';
-        downloadBtn.style.display = 'none';
+        if (!response.ok) {
+            const errBody = await response.text();
+            throw new Error(`Сбой калибровки ядра: ${response.status} -> ${errBody}`);
+        }
+
+        // Принимаем бинарный поток как BLOB (JPEG изображение)
+        const imageBlob = await response.blob();
+        const objectURL = URL.createObjectURL(imageBlob);
+        
+        if (resultImage) {
+            resultImage.src = objectURL;
+            console.log("Топологическая структура кадра восстановлена.");
+        } else {
+            // Если тега вывода нет, просто открываем в новом окне/скачиваем
+            window.open(objectURL, '_blank');
+        }
+
+    } catch (error) {
+        console.error("Критический сбой дескриптора fetch:", error);
+        alert(`Failed to fetch: ${error.message}\n\nРешение:\nОткройте консоль (F12) -> вкладка Network. Посмотрите, какой протокол (http или https) там указан.`);
     }
 }
 
-        processBtn.onclick = async () => {
-    if (!selectedFile) {
-        alert('Drop an image first.');
-        return;
-    }
-    processBtn.innerText = 'COMPUTING QUANTUM PROBABILITIES...';
-    downloadBtn.style.display = 'none';
-    
-    const formData = new FormData();
-    formData.append('file', selectedFile);
-    formData.append('lut_type', lutType.value);
-    formData.append('license_key', licenseKey.value);
-
-    try {
-        // ОТНОСИТЕЛЬНЫЙ ПУТЬ – работает, если index.html и API на одном домене
-        const response = await fetch('/api/process', { 
-            method: 'POST', 
-            body: formData 
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Server fault: ${response.status} ${errorText}`);
-        }
-        
-        const blob = await response.blob();
-        
-        if (resultBlobUrl) URL.revokeObjectURL(resultBlobUrl);
-        
-        resultBlobUrl = URL.createObjectURL(blob);
-        resultImg.src = resultBlobUrl;
-        resultImg.style.display = 'block';
-        
-        downloadBtn.style.display = 'inline-block';
-        processBtn.innerText = 'RUN QUANTUM EXPONENT';
-    } catch (err) {
-        alert('Ошибка: ' + err.message + ' Проверь, что сервер запущен, и путь /api/process доступен.');
-        processBtn.innerText = 'RUN QUANTUM EXPONENT';
-    }
-};
-
-downloadBtn.onclick = () => {
-    if (!resultBlobUrl) return;
-    const originalName = selectedFile.name.substring(0, selectedFile.name.lastIndexOf('.')) || selectedFile.name;
-    const chosenLut = lutType.value;
-    const newFileName = `${originalName}_invariant_${chosenLut}.jpg`;
-    
-    const link = document.createElement('a');
-    link.href = resultBlobUrl;
-    link.download = newFileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-};
 
     </script>
 </body>

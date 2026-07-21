@@ -19,6 +19,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.options("/api/process")
+async def options_process():
+    return {"status": "CORS_OK"}
+
 # --- КОНФИГУРАЦИЯ ПУТЕЙ ---
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 

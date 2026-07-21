@@ -97,7 +97,7 @@ async function uploadImage() {
         console.log("Запуск стабилизатора хаоса. Отправка пакета на ://onrender.com...");
         
         // ВАЖНО: Строго HTTPS домен бэкенда
-        const response = await fetch('https://://onrender.com/api/process', {
+        const response = await fetch('https://onrender.com/api/process', {
             method: 'POST',
             body: formData
             // Никаких headers: { 'Content-Type': ... }! Браузер все сделает сам.
